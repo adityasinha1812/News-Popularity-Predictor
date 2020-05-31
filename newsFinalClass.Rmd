@@ -1,0 +1,100 @@
+---
+title: "News Popularity (Classification)"
+author: "Aditya Sinha"
+date: "5/30/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Importing data
+```{r import}
+news = read.csv("C:/Users/adity/Downloads/Courses/Spring 2020/MSIT 423 - Data Science/Online News Popularity/OnlineNewsPopularity.csv")
+```
+
+# Summary of shares
+```{r shares summary, echo = FALSE}
+attach(news)
+summary(shares)
+par(mfrow = c(1,1))
+plot(shares, xlab = "")
+boxplot(shares)
+hist(shares, prob = T)
+lines(density(shares), col = "blue")
+```
+
+# Removing url, timedelta (non-predictive) and is_weekend (repetitive)
+1. Remove redundant variables
+2. Combine categorical variables together
+3. Convert number of shares to a classification problem. Using 1400 as cutoff
+4. Scale the numerical/continous variables
+```{r remove}
+news <- subset(news, select = -c(url, timedelta, is_weekend ))
+cat_var <- c(12:17, 30:37)
+y <- ifelse(news$shares > 1400, 1, 0) # Median of 1400 is threshold with 1 as popular, 0 as not popular 
+y <- as.factor(y)
+news_1 <- scale(news[, -c(59, cat_var)], center = T, scale = T)  # Center and scale data
+news_2 <- data.frame(y, news[, cat_var], news_1)
+```
+
+# Feature selection using Boruta
+The Boruta algorithm is a wrapper built around the random forest classification algorithm. It tries to capture all the important, interesting features you might have in your dataset with respect to an outcome variable.<br />
+First, it duplicates the dataset, and shuffle the values in each column. These values are called shadow features. * Then, it trains a classifier, such as a Random Forest Classifier, on the dataset. By doing this, you ensure that you can an idea of the importance -via the Mean Decrease Accuracy or Mean Decrease Impurity- for each of the features of your data set. The higher the score, the better or more important.<br/>
+Then, the algorithm checks for each of your real features if they have higher importance. That is, whether the feature has a higher Z-score than the maximum Z-score of its shadow features than the best of the shadow features. If they do, it records this in a vector. These are called a hits. Next,it will continue with another iteration. After a predefined set of iterations, you will end up with a table of these hits.<br/>
+At every iteration, the algorithm compares the Z-scores of the shuffled copies of the features and the original features to see if the latter performed better than the former. If it does, the algorithm will mark the feature as important. In essence, the algorithm is trying to validate the importance of the feature by comparing with random shuffled copies, which increases the robustness. This is done by simply comparing the number of times a feature did better with the shadow features 
+```{r boruta}
+library(Boruta)
+set.seed(12345)
+Boruta.news_train <- Boruta(y~., data = news_2, doTrace = 2, ntree = 100, maxRuns = 20)
+print(Boruta.news_train)
+# Choose variables that are "confirmed" by the model
+features <- names(news_2)[(which(Boruta.news_train$finalDecision == "Confirmed"))]  
+news_3 <- news_2[, c("y", features)]
+```
+
+# Creating train and test set (70 / 30)
+```{r train test}
+set.seed(12345)
+train <- sample(nrow(news_3), as.integer(nrow(news_3) * 0.70))
+newsTrain = news_3[train, ]
+newsTest = news_3[-train, ]
+```
+
+# Function for accuracy calculation
+```{r accuracy}
+accuracy <- function(table){
+  a.rate <- vector()
+  a.rate[1] <- (table[1, 1] + table[2, 2]) / sum(table)
+  a.rate[2] <- table[2, 2] / (table[2, 2] + table[1, 2])
+  a.rate[3] <- table[1, 1] / (table[1, 1] + table[2, 1])
+  names(a.rate) <- c("Accuracy", "TP rate", "TN rate")
+  return(a.rate)
+}
+```
+
+# Method 1: Logistic Regression
+```{r log}
+fit_1 <- glm(y ~ ., data = newsTrain, binomial)
+t_1 <- table(ifelse(predict(fit_1, newsTest[, -1], type = "response") > 0.5, 1, 0), newsTest[, 1])
+accuracy(t_1)
+```
+
+# ROC curve and AUC value 
+```{r roc}
+library(ROCR)
+label.test <- newsTest[, 1]
+prob_1 <- predict(fit_1, newsTest[, -1], type = "response")
+pred_1 <- prediction(prob_1, label.test)
+perf_AUC = performance(pred_1, "auc")
+perf_AUC@y.values[[1]]
+perf_1 <- performance(pred_1, measure = "tpr", x.measure = "fpr")
+plot(perf_1, xlim = c(0.035, 0.965), ylim = c(0.035, 0.965), main = "ROC plot for Logistic")
+abline(coef = c(0, 1))
+```
+
+
+
+# Main header
+

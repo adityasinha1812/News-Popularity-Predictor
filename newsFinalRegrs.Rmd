@@ -1,0 +1,127 @@
+---
+title: "Online News Popularity"
+author: "Team Happy Hour"
+date: "5/29/2020"
+output: html_document
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Data import
+This dataset summarizes a heterogeneous set of features about articles published by Mashable in a period of two years.<br /> 
+
+The goal is to predict the number of shares in social networks (popularity).<br />
+
+**Number of Attributes:** 61 (58 predictive attributes, 2 non-predictive, 1 goal field)
+
+**Types of features:**<br />
+**Words:** Number of words of the title / content; Average word length; Rate of unique / non-stop words of contents<br />
+**Links:** Number of links; Number of links to other articles in Mashable<br />
+**Digital Media:** Number of images / videos<br />
+**Publication Time:** Day of the week / weekend<br />
+**Keywords:** Number of keywords; Worst / best / average keywords (# of shares); Article category<br />
+**NLP:** Closeness to five LDA topics; Title / Text polarity / subjectivity; Rate and polarity of positive / negative words; Absolute subjectivity / polarity level<br />
+**Target:** Number of shares at Mashable<br />
+
+```{r import}
+news = read.csv("C:/Users/adity/Downloads/Courses/Spring 2020/MSIT 423 - Data Science/Online News Popularity/OnlineNewsPopularity.csv")
+```
+
+# Data exploration
+
+## High level summary of dataset
+```{r summary}
+summary(news)
+```
+
+## Removing variables url, timedelta (non-predictive) and is_weekend (repetitive)
+```{r remove extra variables}
+news <- subset(news, select = -c(url, timedelta, is_weekend))
+```
+
+## Checking for null values
+```{r check null values}
+sum(is.na(news))
+```
+
+## Excluding invalid data (length of content is 0)
+```{r remove invalid content}
+news <- news[!(news$n_tokens_content == 0), ]
+```
+
+## Looking at histograms for each variable
+```{r hist1, echo = FALSE}
+par(mfrow = c(3,4))
+for(i in 2:length(news)) {
+  hist(news[, i], xlab = names(news)[i],
+  main = paste("[" , i , "]", names(news)[i]))
+}
+```
+
+## Looking at histogram for number of shares
+```{r hist2, echo = FALSE}
+hist(news$shares, freq = FALSE, breaks = 50, col = "blue", 
+     xlab = "Number of shares (actual)", main = "Histogram of shares (actual)")
+
+hist(log(news$shares), freq = FALSE, breaks = 50, col = "blue", 
+     xlab = "Number of shares (log)", main = "Histogram of shares (log)")
+```
+
+## Converting numeric variables (0, 1) to 2 level factor variables
+```{r factor}
+news$weekday_is_monday <- factor(news$weekday_is_monday) 
+news$weekday_is_wednesday <- factor(news$weekday_is_wednesday) 
+news$weekday_is_thursday <- factor(news$weekday_is_thursday) 
+news$weekday_is_friday <- factor(news$weekday_is_friday) 
+news$weekday_is_tuesday <- factor(news$weekday_is_tuesday) 
+news$weekday_is_saturday <- factor(news$weekday_is_saturday) 
+news$weekday_is_sunday <- factor(news$weekday_is_sunday) 
+
+news$data_channel_is_lifestyle <- factor(news$data_channel_is_lifestyle) 
+news$data_channel_is_entertainment <- factor(news$data_channel_is_entertainment) 
+news$data_channel_is_bus <- factor(news$data_channel_is_bus) 
+news$data_channel_is_socmed <- factor(news$data_channel_is_socmed) 
+news$data_channel_is_tech <- factor(news$data_channel_is_tech) 
+news$data_channel_is_world <- factor(news$data_channel_is_world)
+
+head(news)
+```
+
+## Looking at effect of channel variables on number of shares (log)
+```{r boxplot1, echo = FALSE}
+par(mfrow = c(3,3))
+for (i in 12:17){
+  boxplot(log(news$shares) ~ (news[ ,i]), xlab = names(news)[i], ylab = "Shares")
+}
+```
+
+## Creating a training and testing set with a 70 / 30 split
+```{r traintest}
+set.seed(12345)
+train <- sample(nrow(news), as.integer(nrow(news)*0.70))
+newsTrain = news[train, ]
+newsTest = news[-train, ]
+```
+
+### Fitting a simple linear regression model 
+Here we are passing all variables and using log of shares as the predictor variable.<br />
+We can observe that the R-squared value is around 12% and the MSE is 0.88.<br />
+```{r simplelm}
+fit_1 <- lm(log(shares) ~ ., data = newsTrain)
+summary(fit_1)
+pred_1 = predict(fit_1, newsTest)
+sqrt(mean((log(newsTest$shares) - pred_1)^2))
+```
+
+### Performing backward stepwise regression
+Performing a backward stepwise regression does not help in terms of improving model accuracy.<br />
+We are left with 41 significant variables after performing backward stepwise regression.<br />
+The R-squared remains at 12% and the MSE continues to be 0.88.<br />
+```{r backstep}
+fit_2 <- step(fit_1)
+summary(fit_2)
+pred_2 = predict(fit_2, newsTest)
+sqrt(mean((log(newsTest$shares) - pred_2)^2))
+```
