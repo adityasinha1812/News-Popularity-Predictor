@@ -4,6 +4,8 @@ install.packages("caret")
 install.packages("pROC")
 install.packages("randomForest")
 install.packages('caTools')
+install.packages("car")
+library(car)
 library(caTools)
 library(randomForest)
 library(pROC)
@@ -105,6 +107,7 @@ popularity<- cut(news_data$logshares,c(lower,median,higher),labels=c(0,1) )
 for( i in 1:(length(news_data))){cat(names(news_data[i]),"->", skewness(news_data[,i]),"\n")}
 news_data <- subset(news_data, select= -c(logshares))
 dataset<- news_data
+news_data$popularity <- popularity 
 names(news_data)
 
 #https://medium.com/@TheDataGyan/day-8-data-transformation-skewness-normalization-and-much-more-4c144d370e55
@@ -172,15 +175,86 @@ svm_roc=roc(test_set$popularity, as.numeric(svm_prediction), direction="<")
 
 #all rocs
 plot(log_roc,col= 2, main="ROC curves comparing classification performance")
-legend(-0.2, 1.0, c('lm', 'rf', 'svm'), 2:4)
+legend(-0.2, 1.0, c('logistic', 'random forest', 'svm'), 2:4)
 plot(rf_roc, col=3, add=TRUE)
 plot(svm_roc, col=4, add=TRUE)
 
 
+#stepwise 
+names(news_data)
+set.seed(1000)
+sample_size <- floor(0.7 * nrow(news_data))
+train <- sample(seq_len(nrow(news_data)), size = sample_size)
+trainset <- news_data[train, ]
+testset <- news_data[-train, ]
+
+dim(trainset)
+dim(testset)
+
+#glm + step 
+s_fit= glm(popularity~.-shares,data=trainset, binomial)
+step_fit=step(s_fit)
+summary(step_fit)
+plot(step_fit)
+names(news_data)
+
+#aic
+s_fit$aic
+step_fit$aic
+
+new_fit <- update(s_fit,.~.-n_tokens_title-n_unique_tokens-n_non_stop_words-n_non_stop_unique_tokens-num_imgs-num_videos-data_channel_is_world-self_reference_avg_sharess-
+weekday_is_sunday-LDA_04-global_rate_negative_words-rate_negative_words-avg_positive_polarity-max_positive_polarity-avg_negative_polarity-
+min_negative_polarity-max_negative_polarity-abs_title_sentiment_polarity )
+
+round(coef(new_fit),4)
+
+step_prediction <- predict(new_fit, testset, type="response") 
+step_accuracy<-ifelse(step_prediction>=0.5,1,0)
+
+table(test_set$popularity)
+table(step_accuracy)
+
+#0.6456  
+confusionMatrix(factor(step_accuracy),factor(testset$popularity))
+
+#check multicolinearity
+vif(new_fit)
+
+#source:http://www.sthda.com/english/articles/39-regression-model-diagnostics/160-multicollinearity-essentials-and-vif-in-r/
+#remove variables with vif over 5:- kw_max_min,kw_avg_min,kw_max_avg,kw_avg_avg
+
+final_fit<- update(new_fit, .~.-kw_max_min-kw_avg_min-kw_max_avg-kw_avg_avg)
+summary(final_fit)
+plot(final_fit)
+final_fit$aic
+step_prediction <- predict(final_fit, testset, type="response") 
+step_accuracy<-ifelse(step_prediction>=0.5,1,0)
+
+table(testset$popularity)
+table(step_accuracy)
+
+#0.6353   
+confusionMatrix(factor(step_accuracy),factor(testset$popularity))
+
+
+summary(final_fit)
+coef(final_fit)
 
 
 
-  
+
+
+#https://www.guru99.com/r-generalized-linear-model.html
+library(ROCR)
+ROCRpred <- prediction(step_prediction, testset$popularity)
+ROCRperf <- performance(ROCRpred, 'tpr', 'fpr')
+plot(ROCRperf, colorize = TRUE, text.adj = c(-0.2, 1.7))
+
+
+
+
+
+#step uses add() and drop1() already so try anova()
 
 
 
