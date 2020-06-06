@@ -135,7 +135,7 @@ train_set <- dataset[train, ]
 test_set <- dataset[-train, ]
 
 
-#logistic
+#logistic Accuracy : 0.6354    
 log_fit = glm(popularity~., data=train_set,binomial)
 summary(log_fit)
 plot(log_fit)
@@ -152,7 +152,7 @@ plot(roc(test_set$popularity, log_prediction, direction="<"),
      col="red", lwd=3, main="ROC plot for Logistic")
 log_roc=roc(test_set$popularity, log_prediction, direction="<")
 
-#random forest
+#random forest Accuracy : 0.6465     
 rf_fit = randomForest(popularity~., data=train_set, importance=TRUE)
 summary(rf_fit)
 plot(rf_fit)
@@ -165,7 +165,7 @@ plot(roc(test_set$popularity, as.numeric(rf_prediction), direction="<"),
      col="red", lwd=3, main="ROC plot for Random Forest")
 rf_roc=roc(test_set$popularity, as.numeric(rf_prediction), direction="<")
 
-#SVM
+#SVM Accuracy : 0.6394
 svm_fit= svm(popularity~.,data=train_set)
 svm_prediction<-predict(svm_fit,test_set)
 confusionMatrix(factor(svm_prediction),factor(test_set$popularity))
@@ -195,66 +195,49 @@ dim(testset)
 s_fit= glm(popularity~.-shares,data=trainset, binomial)
 step_fit=step(s_fit)
 summary(step_fit)
-plot(step_fit)
-names(news_data)
+yhat = predict(step_fit, testset)
+accuracy<-ifelse(yhat>=0.5,1,0)
+#stepwise Accuracy - 0.6209    
+confusionMatrix(factor(accuracy),factor(testset$popularity))
 
-#aic
-s_fit$aic
-step_fit$aic
+#source:http://www.sthda.com/english/articles/36-classification-methods-essentials/149-penalized-logistic-regression-essentials-in-r-ridge-lasso-and-elastic-net/
+#ridge 
+library(glmnet)
+x <- model.matrix(popularity~.-shares, trainset)[,-1]
+y<- trainset$popularity
+ridge_fit=glmnet(x, y, family = "binomial", alpha = 0)
+plot(ridge_fit, xvar="lambda")
+cv_fit = cv.glmnet(x, y, family = "binomial", alpha=0) 
+cv_fit$lambda.min      
+abline(v=log(cv_fit$lambda.min))
+plot(cv_fit)
+x_test <- model.matrix(popularity~.-shares, testset)[,-1]
+yhat_ridge = predict(ridge_fit, s=cv_fit$lambda.1se, newx=x_test)
+ridge_accuracy<-ifelse(yhat_ridge>=0.5,1,0)
+#Accuracy : 0.6061
+confusionMatrix(factor(ridge_accuracy),factor(testset$popularity))
 
-new_fit <- update(s_fit,.~.-n_tokens_title-n_unique_tokens-n_non_stop_words-n_non_stop_unique_tokens-num_imgs-num_videos-data_channel_is_world-self_reference_avg_sharess-
-weekday_is_sunday-LDA_04-global_rate_negative_words-rate_negative_words-avg_positive_polarity-max_positive_polarity-avg_negative_polarity-
-min_negative_polarity-max_negative_polarity-abs_title_sentiment_polarity )
-
-round(coef(new_fit),4)
-
-step_prediction <- predict(new_fit, testset, type="response") 
-step_accuracy<-ifelse(step_prediction>=0.5,1,0)
-
-table(test_set$popularity)
-table(step_accuracy)
-
-#0.6456  
-confusionMatrix(factor(step_accuracy),factor(testset$popularity))
-
-#check multicolinearity
-vif(new_fit)
-
-#source:http://www.sthda.com/english/articles/39-regression-model-diagnostics/160-multicollinearity-essentials-and-vif-in-r/
-#remove variables with vif over 5:- kw_max_min,kw_avg_min,kw_max_avg,kw_avg_avg
-
-final_fit<- update(new_fit, .~.-kw_max_min-kw_avg_min-kw_max_avg-kw_avg_avg)
-summary(final_fit)
-plot(final_fit)
-final_fit$aic
-step_prediction <- predict(final_fit, testset, type="response") 
-step_accuracy<-ifelse(step_prediction>=0.5,1,0)
-
-table(testset$popularity)
-table(step_accuracy)
-
-#0.6353   
-confusionMatrix(factor(step_accuracy),factor(testset$popularity))
-
-
-summary(final_fit)
-coef(final_fit)
+#lasso
+lasso_fit=glmnet(x, y, family = "binomial", alpha = 1)
+plot(lasso_fit, xvar="lambda")
+cv_fit = cv.glmnet(x, y, family = "binomial", alpha=1) 
+cv_fit$lambda.min      
+abline(v=log(cv_fit$lambda.min))
+plot(cv_fit)
+x_test <- model.matrix(popularity~.-shares, testset)[,-1]
+yhat_lasso = predict(lasso_fit, s=cv_fit$lambda.1se, newx=x_test)
+lasso_accuracy<-ifelse(yhat_lasso>=0.5,1,0)
+#Accuracy : 0.6094   
+confusionMatrix(factor(lasso_accuracy),factor(testset$popularity))
 
 
 
 
 
-#https://www.guru99.com/r-generalized-linear-model.html
-library(ROCR)
-ROCRpred <- prediction(step_prediction, testset$popularity)
-ROCRperf <- performance(ROCRpred, 'tpr', 'fpr')
-plot(ROCRperf, colorize = TRUE, text.adj = c(-0.2, 1.7))
 
 
 
 
-
-#step uses add() and drop1() already so try anova()
 
 
 
