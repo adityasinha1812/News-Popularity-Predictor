@@ -15,6 +15,7 @@ library(lattice)
 library(caret)
 library(Boruta)
 library(ggplot2)
+library(gam)
 
 news_data <- read.csv("/Users/anuradha/Desktop/Spring/DS for BI/OnlineNewsPopularity/OnlineNewsPopularity.csv")
 attach(news_data)
@@ -105,7 +106,7 @@ names(news_data)
 #two categories, popular vs un-popular
 #popularity<- cut(news_data$logshares,c(lower,median,higher),labels=c(0,1) )
 #lapply(news_data,function(x) { length(which(is.na(x)))})
-popularity <- ifelse(news_data$shares > 1400, 1, 0)
+popularity <- ifelse(news_data$shares >= 1400, 1, 0)
 popularity <- as.factor(popularity)
 news_data$popularity <- popularity 
 head(news_data)
@@ -159,24 +160,24 @@ plot(roc(test_set$popularity, log_prediction, direction="<"),
      col="red", lwd=3, main="ROC plot for Logistic")
 log_roc=roc(test_set$popularity, log_prediction, direction="<")
 
-#random forest Accuracy : 0.6591  
+#random forest Accuracy : 0.6605    
 #check mtry?, try bagging 
 rf_fit = randomForest(popularity~.-shares, data=train_set, importance=TRUE)
 summary(rf_fit)
 #plot(rf_fit)
 
 rf_prediction <- predict(rf_fit, test_set, type="class") 
-rf_accuracy<-ifelse(rf_prediction>=0.5,1,0)
+#rf_accuracy<-ifelse(rf_prediction>=0.5,1,0)
 table(test_set$popularity)
 table(rf_prediction)
-confusionMatrix(factor(rf_accuracy),factor(test_set$popularity))
+confusionMatrix(factor(rf_prediction),factor(test_set$popularity))
 
 
 plot(roc(test_set$popularity, as.numeric(rf_prediction), direction="<"),
      col="red", lwd=3, main="ROC plot for Random Forest")
 rf_roc=roc(test_set$popularity, as.numeric(rf_prediction), direction="<")
 
-#SVM Accuracy : 0.6501   
+#Accuracy : 0.6529      
 #use kernel 
 svm_fit= svm(popularity~.-shares,data=train_set, type = 'C-classification', kernel = 'polynomial')
 summary(svm_fit)
@@ -247,10 +248,8 @@ final_fit$aic
 
 step_prediction <- predict(final_fit, testset, type="response") 
 step_accuracy<-ifelse(step_prediction>=0.5,1,0)
-
 table(testset$popularity)
 table(step_accuracy)
-
 # Accurcay 0.6478      
 confusionMatrix(factor(step_accuracy),factor(testset$popularity))
 
@@ -287,64 +286,95 @@ lasso_accuracy<-ifelse(yhat_lasso>=0.5,1,0)
 confusionMatrix(factor(lasso_accuracy),factor(testset$popularity))
 summary(lasso_fit)
 #dimensionality reduction: PCA , 
-#
+
+
+names(news_data)
 
 #gam
 library(gam)
-library(mgcv)
-fit= gam(popularity~
-           s(n_tokens_title)+
-           s(n_tokens_content)+
-           s(n_unique_tokens)+
-           s(n_non_stop_words)+
-           s(num_self_hrefs)+
-           s(num_videos)+
-           s(kw_min_min)+
-           s(kw_max_min)+
-           s(kw_avg_min)+
-           s(kw_avg_max)+
-           s(kw_min_avg)+
-           s(kw_max_avg)+
-           s(kw_avg_avg)+
-           s(self_reference_min_shares)+
-           s(self_reference_max_shares)+
-           s(self_reference_avg_sharess)+
-           s(LDA_00)+
-           s(LDA_01)+
-           s(LDA_03)+
-           s(global_subjectivity)+
-           s(global_sentiment_polarity)+
-           s(global_rate_negative_words)+
-           s(rate_positive_words), 
-         data=trainset, family="binomial", method = "REML")
-summary(fit)
-plot.gam(fit, se=T,ask=T)
-yhat = predict(fit,testset)
-plot(fit$fitted.values, fit$residuals, pch=16, cex=.7)
-lines(smooth.spline(fit$fitted.values, fit$residuals, df=3), col=2)
+gamfit1 = gam(shares~data_channel_is_tech+
+              weekday_is_thursday+
+              s(n_non_stop_unique_tokens)+
+                s(average_token_length)+
+                s(kw_min_max)+
+                s(kw_avg_avg)+
+                s(LDA_01)+
+                s(global_sentiment_polarity)+
+                s(avg_positive_polarity)+
+                s(max_negative_polarity)+
+                data_channel_is_lifestyle+
+                data_channel_is_world+
+                weekday_is_friday+
+                s(n_tokens_title)+
+                s(num_hrefs)+
+                s(num_keywords)+
+                s(kw_max_max)+
+                s(self_reference_min_shares)+
+                s(LDA_02)+
+                s(global_rate_positive_words)+
+                s(min_positive_polarity)+
+                s(title_subjectivity)+
+                data_channel_is_entertainment+
+                weekday_is_monday+
+                weekday_is_saturday+
+                s(n_tokens_content)+
+                s(num_self_hrefs)+
+                s(kw_min_min)+
+                s(kw_avg_max)+
+                s(self_reference_max_shares)+
+                s(LDA_03)+
+                s(global_rate_negative_words)+
+                s(max_positive_polarity)+
+                s(title_sentiment_polarity)+
+                data_channel_is_bus+
+                weekday_is_tuesday+
+                weekday_is_sunday+
+                s(n_unique_tokens)+
+                s(num_imgs)+
+                s(kw_max_min)+
+                s(kw_min_avg)+
+                s(self_reference_avg_sharess)+
+                s(LDA_04)+
+                s(rate_positive_words)+
+                s(avg_negative_polarity)+
+                s(abs_title_subjectivity)+
+                data_channel_is_socmed+
+              weekday_is_wednesday+
+                n_non_stop_words+
+                s(num_videos)+
+                s(kw_avg_min)+
+                s(kw_max_avg)+
+                s(LDA_00)+
+                s(global_subjectivity)+
+                s(rate_negative_words)+
+                s(min_negative_polarity)+
+                s(abs_title_sentiment_polarity), data=trainset)
+summary(gamfit1)
+par(mfrow=c(2,4))
+plot(gamfit1, se=T,ask=T)
+#yhat = predict(gamfit1,testset)
+#plot(fit$fitted.values, gamfit1$residuals, pch=16, cex=.7)
+#lines(smooth.spline(gamfit1$fitted.values, gamfit1$residuals, df=3), col=2)
 
-#fit_7 = gam(popularity ~ 1, data=trainset, family="binomial")
-#fit_8 = step.Gam(fit_7, scope=list(
-#  "n_tokens_title"=~1+n_tokens_title+s(n_tokens_title),
-#  "n_tokens_content"=~1+n_tokens_content+s(n_tokens_content),
-#  "n_unique_tokens"=~1+n_unique_tokens+s(n_unique_tokens),
-#  "n_non_stop_words"=~1+n_non_stop_words+s(n_non_stop_words),
-#  "num_self_hrefs"=~1+num_self_hrefs+s(num_self_hrefs), 
-#  "num_videos"=~1+num_videos+s(num_videos)
-#))
+#cross_tab =with(news_data,table(data_channel_is_socmed, data_channel_is_lifestyle, popularity))
+#ftable(cross_tab, row.vars=1:2, cols.vars = 3:4)
+#cross_tab =with(news_data,table(data_channel_is_entertainment,data_channel_is_world,data_channel_is_bus,data_channel_is_tech, popularity))
+#ftable(cross_tab, row.vars=1:2, cols.vars = 3:4)
+#cross_tab =with(news_data,table(data_channel_is_bus,data_channel_is_tech, popularity))
+#ftable(cross_tab, row.vars=1:2, cols.vars = 3:4)
 
-cross_tab =with(news_data,table(data_channel_is_socmed, data_channel_is_lifestyle, popularity))
-ftable(cross_tab, row.vars=1:2, cols.vars = 3:4)
+#corelation matrices
+correlations<- cor(as.matrix(news_data[, c(1:6,39:43)]))
+correlations
 
-cross_tab =with(news_data,table(data_channel_is_entertainment,data_channel_is_world,data_channel_is_bus,data_channel_is_tech, popularity))
-ftable(cross_tab, row.vars=1:2, cols.vars = 3:4)
+data_channel_cor<- cor(as.matrix(news_data[, c(1:6)]))
+data_channel_cor
 
-cross_tab =with(news_data,table(data_channel_is_bus,data_channel_is_tech, popularity))
-ftable(cross_tab, row.vars=1:2, cols.vars = 3:4)
+weekday_cor<- cor(as.matrix(news_data[, c(7:13)]))
+weekday_cor
 
+kw_cor<- cor(as.matrix(news_data[, c(27:35)]))
+kw_cor
 
-
-
-
-
-
+lda_cor<- cor(as.matrix(news_data[, c(39:43)]))
+lda_cor
